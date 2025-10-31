@@ -118,11 +118,13 @@
                     </div>
 
                     <!-- t2:ai response Panels -->
-                    <div id="filtered-map-panel" class="tab-content flex-grow border rounded-lg bg-gray-100 flex-col">
+                    <!-- MODIFIED: 移除了 flex-col，因為 iframe 需要填滿空間 -->
+                    <div id="filtered-map-panel" class="tab-content flex-grow border rounded-lg bg-gray-100">
                          <!-- REMOVED: filtered-map-title -->
-                         <div id="filtered-map-container" class="w-full h-full flex items-center justify-center text-gray-500 flex-grow p-4 text-center">
+                         <!-- MODIFIED: 移除了 padding 和 text-center，以便 iframe 能填滿 -->
+                         <div id="filtered-map-container" class="w-full h-full flex items-center justify-center text-gray-500 flex-grow text-center">
                             <!-- Placeholder text -->
-                             地圖連結將在新分頁開啟。
+                             點擊 AI 回覆中的地點連結，可在此處顯示詳細地圖。
                          </div>
                     </div>
 
@@ -1129,7 +1131,8 @@ Query: "${query}"`,
                  const descriptionHtml = placemark ? placemark.description.replace(/"/g, '"') : '';
                  const safeName = name.trim().replace(/"/g, '"'); // Escape name
 
-                 const nameSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name.trim())}&hl=${mapLang}`;
+                 // MODIFIED: Changed to embeddable URL format
+                 const nameSearchUrl = `https://maps.google.com/maps?q=${encodeURIComponent(name.trim())}&hl=${mapLang}&z=15&output=embed`;
                  let coordsUrl = '#'; // Default if coords missing
                   if (coords && coords.includes(',')) {
                       const coordsParts = coords.split(',');
@@ -1140,7 +1143,8 @@ Query: "${query}"`,
                       // Ensure latitude and longitude are valid numbers before forming URL
                       if (!isNaN(latitude) && !isNaN(longitude)) {
                            // Use standard lat,lng order for Google Maps URL
-                          coordsUrl = `https://www.google.com/maps?q=${latitude},${longitude}&hl=${mapLang}&z=15`;
+                           // MODIFIED: Changed to embeddable URL format
+                          coordsUrl = `https://maps.google.com/maps?q=${latitude},${longitude}&hl=${mapLang}&z=15&output=embed`;
                       } else {
                           console.warn(`Invalid coordinates parsed for ${name}: lon=${coordsParts[0]}, lat=${coordsParts[1]}`);
                           coordsUrl = '#'; // Keep invalid coords link disabled
@@ -1151,12 +1155,12 @@ Query: "${query}"`,
                   }
 
 
-                 // MODIFIED: Added two links (name and coords)
+                 // MODIFIED: 移除了 target="_blank" 並將 href 改為 data-url，以便 JS 攔截
                  return `<div class="py-1">
                              <div class="flex items-center justify-between">
                                  <div> <!-- Wrapper for name and coords links -->
-                                     <a href="${nameSearchUrl}" target="_blank" class="location-link" data-name="${safeName}">${safeName}</a>
-                                     ${coordsUrl !== '#' ? `(<a href="${coordsUrl}" target="_blank" class="coords-link text-xs" data-coordinates="${coords.trim()}">座標</a>)` : '<span class="text-gray-400 text-xs">(無有效座標)</span>'}
+                                     <a href="#!" data-url="${nameSearchUrl}" class="location-link" data-name="${safeName}">${safeName}</a>
+                                     ${coordsUrl !== '#' ? `(<a href="#!" data-url="${coordsUrl}" class="coords-link text-xs" data-coordinates="${coords.trim()}">座標</a>)` : '<span class="text-gray-400 text-xs">(無有效座標)</span>'}
                                  </div>
                                  <div class="flex items-center space-x-2 ml-2 flex-shrink-0">
                                      <button class="ai-details-btn text-gray-500 hover:text-gray-800" title="詳細資訊" data-name="${safeName}" data-description="${descriptionHtml}">
@@ -1418,9 +1422,13 @@ Query: "${query}"`,
         function switchTab(tabName) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            const tabButton = document.getElementById(`${tabName}-tab`);
+            if (tabButton) tabButton.classList.add('active');
+            
             // 修正: 確保 map-maintenance 的 panel ID 正確
-            document.getElementById(`${tabName}-map-panel`).classList.add('active'); 
+            const tabContent = document.getElementById(`${tabName}-map-panel`);
+            if (tabContent) tabContent.classList.add('active'); 
             
             if (tabName === 'indexeddb') {
                 displayDBData();
@@ -1429,6 +1437,31 @@ Query: "${query}"`,
             }
         }
         
+        // --- NEW: 在 'AI 答覆' 分頁中顯示地圖 ---
+        function showMapInFilteredTab(url) {
+            // 1. 切換到 'filtered' 分頁
+            switchTab('filtered');
+            
+            // 2. 找到容器
+            const container = document.getElementById('filtered-map-container');
+            if (!container) return;
+
+            // 3. 設定 iframe
+            container.innerHTML = `
+                <iframe src="${url}" 
+                        width="100%" 
+                        height="100%" 
+                        style="border:0;" 
+                        allowfullscreen="" 
+                        loading="lazy" 
+                        referrerpolicy="no-referrer-when-downgrade">
+                </iframe>`;
+            
+            // 4. 移除 placeholder 的樣式
+            container.classList.remove('items-center', 'justify-center', 'text-gray-500', 'p-4', 'text-center');
+        }
+
+
         function handleDBSearch() {
             const searchTerm = document.getElementById('db-search-input').value;
             displayDBData(searchTerm);
@@ -1465,17 +1498,28 @@ Query: "${query}"`,
         messageInput.addEventListener('keydown', (e) => (e.key === 'Enter' && !e.shiftKey) && (e.preventDefault(), handleUserInput()));
         diagnosticButton.addEventListener('click', runDiagnostics);
         
-        // Modified event listener to handle details button (links are handled by browser now)
+        // MODIFIED: 更新 chatWindow 的點擊事件監聽器
         chatWindow.addEventListener('click', (event) => {
-            // REMOVED location-link listener
-            const button = event.target.closest('.ai-details-btn');
-            // Note: Checkbox listener is added directly in displayInitialSetup
+            const target = event.target;
+            const button = target.closest('.ai-details-btn');
+            // NEW: 檢查是否點擊了 .location-link 或 .coords-link
+            const locationLink = target.closest('.location-link, .coords-link');
 
-             if (button) {
+            // 處理詳細資訊按鈕
+            if (button) {
                 event.preventDefault();
                 const name = button.dataset.name;
                 const description = button.dataset.description;
                 showModal(name, description);
+            } 
+            // NEW: 處理地圖連結
+            else if (locationLink) { 
+                event.preventDefault(); // 防止 href="#!" 跳轉
+                const url = locationLink.dataset.url;
+                if (url) {
+                    // 呼叫新函式以在分頁中顯示地圖
+                    showMapInFilteredTab(url);
+                }
             }
         });
 
