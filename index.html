@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的智慧地圖 My AI Map</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 主要樣式 -->
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f0f4f8;
+        }
+        /* Tab Styles */
+        .tab-btn { padding: 8px 16px; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s ease-in-out; }
+        .tab-btn.active { color: #4f46e5; border-bottom-color: #4f46e5; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: flex; }
+        
+        /* 行動版隱藏總覽地圖 */
+        @media (max-width: 1023px) {
+            .map-panel-mobile-hidden {
+                display: none !important;
+            }
+            #chat-container {
+                height: 95vh;
+                max-height: none;
+                margin: 0;
+                border-radius: 0;
+            }
+            #resizer {
+                display: none !important;
+            }
+        }
+    </style>
+    
+    <!-- chat-window 樣式 -->
+    <style>
+        /* 為聊天視窗添加自定義滾動條樣式 */
+        #chat-window::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-window::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        #chat-window::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 3px;
+        }
+        #chat-window::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        /* 針對 Firefox 的滾動條樣式 */
+        #chat-window {
+            scrollbar-width: thin;
+            scrollbar-color: #94a3b8 #f1f5f9;
+        }
+        /* 為錯誤訊息中的程式碼添加樣式 */
+        .bot-message code {
+            background-color: #f3f4f6;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+        }
+        /* 淡入動畫 */
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* AI 回覆中的地點連結樣式 */
+        .location-link, .coords-link { /* Added .coords-link */
+            color: #2563eb;
+            text-decoration: underline;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .location-link:hover, .coords-link:hover { /* Added .coords-link */
+            color: #1d4ed8;
+        }
+    </style>
+
+</head>
+
+<body class="text-gray-800">
+
+    <div class="flex flex-col h-screen">
+
+        <!-- Header -->
+        <header class="bg-white shadow-md w-full p-4 flex items-center justify-center border-b z-10">
+            <h1 class="text-2xl font-bold text-gray-700">我的智慧地圖 My AI Map</h1>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            
+            <!-- Left Panel: Map with Tabs -->
+            <div id="left-panel" class="w-full lg:w-1/2 flex flex-col p-4 space-y-4 map-panel-mobile-hidden">
+                <div class="bg-white p-4 rounded-xl shadow-lg flex-grow flex flex-col min-w-[200px]">
+
+                    <!-- Tabs Navigation -->
+                    <div class="flex border-b mb-2 flex-wrap">
+                        <button id="overview-tab" class="tab-btn active">總覽地圖 Overview Map</button>
+                        <button id="filtered-tab" class="tab-btn">AI答覆 AI Answers</button>
+                        <button id="indexeddb-tab" class="tab-btn">地標列表 PlaceMarks</button>
+                        <button id="map-maintenance-tab" class="tab-btn">維護地圖選單 Maintain Map Menu</button>
+                    </div>
+
+                    <!-- t1:overview Panels -->
+                    <div id="overview-map-panel" class="tab-content active flex-grow">
+                        <iframe id="overview-map-iframe" src="" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy"></iframe>
+                    </div>
+
+                    <!-- t2:ai response Panels -->
+                    <div id="filtered-map-panel" class="tab-content flex-grow border rounded-lg bg-gray-100 flex-col">
+                         <!-- REMOVED: filtered-map-title -->
+                         <div id="filtered-map-container" class="w-full h-full flex items-center justify-center text-gray-500 flex-grow p-4 text-center">
+                            <!-- Placeholder text -->
+                             地圖連結將在新分頁開啟。
+                         </div>
+                    </div>
+
+                    <!-- t3:IndexedDB Data Panel -->
+                    <div id="indexeddb-map-panel" class="tab-content flex-grow border rounded-lg p-4 bg-gray-50 flex-col max-h-full">
+                        <div class="flex-shrink-0 mb-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <h2 class="text-lg font-semibold text-gray-700">IndexedDB 地標資料庫 (Database)</h2>
+                            <div class="flex-grow sm:flex-grow-0 flex items-center gap-2 w-full sm:w-auto">
+                                <input type="text" id="db-search-input" class="flex-grow p-2 border rounded-md" placeholder="輸入關鍵字查詢...">
+                                <button id="db-search-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-md transition">查詢</button>
+                            </div>
+                        </div>
+                        <div class="flex-shrink-0 mb-4 flex items-center justify-end gap-2">
+                            <button id="refresh-db-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition">顯示全部 (Show All)</button>
+                            <button id="download-db-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition">下載資料 (Download)</button>
+                            <button id="clear-db-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition">清除資料庫 (Clear DB)</button>
+                        </div>
+                        <div class="flex-grow overflow-y-auto relative">
+                            <div id="db-data-container" class="absolute inset-0">
+                                <p class="text-gray-500 p-4">點擊「顯示全部」從資料庫載入資料...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- t4:Map list Panel -->
+                    <div id="map-maintenance-map-panel" class="tab-content flex-grow border rounded-lg p-4 bg-gray-50 flex-col max-h-full">
+                        <div class="flex-shrink-0 my-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <h3 class="text-lg font-semibold text-gray-700">地圖列表 (Map List)</h3>
+                            <div class="flex-grow sm:flex-grow-0 flex items-center gap-2 w-full sm:w-auto">
+                                <input type="text" id="map-search-input" class="flex-grow p-2 border rounded-md" placeholder="依名稱查詢地圖...">
+                                <button id="map-search-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-md transition">查詢</button>
+                            </div>
+                        </div>
+                         <div class="flex-shrink-0 mb-4 flex items-center justify-end gap-2">
+                            <button id="map-show-add-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition">新增地圖 (Add Map)</button>                
+                            <button id="map-show-all-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition">顯示全部 (Show All)</button>
+                        </div>
+                        <div class="flex-grow overflow-y-auto relative">
+                            <div id="map-list-container" class="absolute inset-0">
+                                <!-- Map list will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Resizer -->
+            <div id="resizer" class="w-2 cursor-col-resize bg-gray-200 hover:bg-indigo-500 transition-colors duration-200"></div>
+
+            <!-- Right Panel: Chatbot -->
+            <div id="right-panel" class="w-full lg:w-1/2 flex flex-col bg-gray-50 border-t lg:border-t-0 p-4 items-center justify-center">
+                
+                <!-- 主聊天容器 -->
+                <div id="chat-container" class="w-full max-w-2xl h-[90vh] max-h-[800px] bg-white rounded-2xl shadow-2xl flex flex-col transition-all duration-300 min-w-[200px]">
+                    
+                    <!-- 聊天標題 -->
+                    <header class="bg-slate-800 text-white p-4 rounded-t-2xl flex items-center justify-between shadow-md flex-shrink-0">
+                        <div class="flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-400 mr-3"><path d="m12 14 4-4"/><path d="m12 14 4 4"/><path d="M12 14H2.5"/><path d="M12 14v7.5"/><path d="m18 4-4 4"/><path d="M12 2v7.5"/><path d="m6 4 4 4"/><circle cx="12" cy="12" r="10"/></svg>
+                            <h1 class="text-xl font-bold">地圖小幫手 (AI-Powered)</h1>
+                        </div>
+                        <div id="status-indicator" class="flex items-center text-xs px-2 py-1 rounded-full">
+                            <span id="status-dot" class="w-2 h-2 rounded-full mr-2"></span>
+                            <span id="status-text"></span>
+                        </div>
+                    </header>
+
+                    <!-- 聊天訊息顯示視窗 -->
+                    <main id="chat-window" class="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50">
+                        <!-- 初始訊息會由 JavaScript 動態加入 -->
+                    </main>
+
+                    <!-- ai action 輸入區域 -->
+                    <footer class="p-4 bg-white border-t border-slate-200 rounded-b-2xl flex-shrink-0">
+                        <div class="flex items-center bg-slate-100 rounded-lg p-2">
+                            <input type="text" id="message-input" class="flex-1 bg-transparent border-none focus:ring-0 outline-none text-slate-800 placeholder-slate-500 px-2" placeholder="請先載入地圖資料..." autocomplete="off" disabled>
+                            <button id="send-button" class="bg-slate-800 text-white rounded-md p-2 hover:bg-slate-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>
+                                <svg id="send-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                <div id="loading-spinner" class="hidden animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                            </button>
+                        </div>
+                        <div class="mt-2 flex justify-center">
+                            <button id="diagnostic-button" class="text-xs text-slate-600 hover:text-slate-800 underline">
+                                🔍 檢查瀏覽器相容性
+                            </button>
+                        </div>
+                    </footer>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+    
+    <!-- t2:Modal for Description -->
+    <div id="description-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full relative">
+            <h3 class="text-xl font-bold mb-4 text-gray-800" id="modal-title">地點說明</h3>
+            <div id="modal-content" class="text-gray-700 max-h-64 overflow-y-auto pr-2 space-y-2" style="scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9;"></div>
+            <button id="modal-close-btn" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Modal for Map Form -->
+    <div id="map-form-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full relative">
+            <h2 id="map-modal-title" class="text-xl font-bold mb-4 text-gray-800">新增地圖 (Add Map)</h2>
+            <form id="map-form" class="space-y-3">
+                <input type="hidden" id="map-id-input">
+                <div>
+                    <label for="map-name-ch" class="block text-sm font-medium text-gray-700">中文名稱 (Chinese Name)</label>
+                    <input type="text" id="map-name-ch" class="mt-1 block w-full p-2 border rounded-md" required>
+                </div>
+                <div>
+                    <label for="map-name-en" class="block text-sm font-medium text-gray-700">英文名稱 (English Name) (選填)</label>
+                    <input type="text" id="map-name-en" class="mt-1 block w-full p-2 border rounded-md">
+                </div>
+                 <!-- NEW: Map Language Dropdown -->
+                 <div>
+                    <label for="map-language" class="block text-sm font-medium text-gray-700">地圖語言 (Map Language)</label>
+                    <select id="map-language" class="mt-1 block w-full p-2 border rounded-md bg-white">
+                        <option value="zh-TW" selected>繁體中文 (Traditional Chinese)</option>
+                        <option value="en-US">英文 (English)</option>
+                         <option value="ja-JP">日文 (Japanese)</option> <!-- Added Japanese -->
+                        <!-- Add more languages as needed -->
+                    </select>
+                 </div>
+                <div>
+                    <label for="map-url" class="block text-sm font-medium text-gray-700">Google 我的地圖網址 (Google My Maps URL)</label>
+                    <input type="url" id="map-url" class="mt-1 block w-full p-2 border rounded-md" required placeholder="https://www.google.com/maps/d/...">
+                </div>
+                <!-- NEW FIELDS START -->
+                <div>
+                    <label for="map-description" class="block text-sm font-medium text-gray-700">地圖說明 (Map Description) (選填)</label>
+                    <textarea id="map-description" rows="3" class="mt-1 block w-full p-2 border rounded-md" placeholder="本地圖的簡短介紹...
+A short description of this map..."></textarea>
+                </div>
+                <div>
+                    <label for="map-ai-prompt" class="block text-sm font-medium text-gray-700">AI Prompt 說明 (AI Prompt) (選填)</label>
+                    <textarea id="map-ai-prompt" rows="5" class="mt-1 block w-full p-2 border rounded-md font-mono text-sm" placeholder="提供給 AI 的分析指令 (需與上方地圖語言一致)。請使用 {placemarkDataString} 和 {userInput} 作為變數。
+Instructions for the AI (should match Map Language above). Use {placemarkDataString} and {userInput} as variables."></textarea>
+                </div>
+                <!-- NEW FIELDS END -->
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" id="clear-map-form-btn" class="hidden bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-md transition">清除 (Clear)</button>
+                    <button type="submit" id="save-map-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">儲存 (Save)</button>
+                </div>
+            </form>
+            <button id="map-modal-close-btn" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 transition">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+    </div>
+
+
+    <script type="module">
+        // DOM 元素獲取
+        const chatWindow = document.getElementById('chat-window');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const sendIcon = document.getElementById('send-icon');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const diagnosticButton = document.getElementById('diagnostic-button');
+
+        // 全域變數
+        let model = null;
+        let db = null; // IndexedDB instance
+        // let isBilingualMode = false; // REMOVED
+        let auxiliaryLanguage = 'zh-TW'; // NEW: Controls auxiliary output language, default Chinese
+        let currentMapAiPrompt = null; // Store the AI prompt of the analyzed map
+        let currentMapLanguage = 'zh-TW'; // Base language for the loaded map
+
+        // 語言代碼映射 (用於翻譯提示詞 和 UI顯示)
+        const langCodeToName = {
+            'zh-TW': '繁體中文',
+            'en-US': '英文',
+            'ja-JP': '日文'
+        };
+
+        // 翻譯物件 (Prompts updated for language focus)
+        const translations = {
+            // Initial Setup
+            'welcome': {
+                'zh-TW': '您好！我是您的智慧地圖小幫手。',
+                'en-US': 'Hello! I am your smart map assistant.' // Keep for potential future use
+            },
+            // REMOVED bilingualCheckboxLabel
+             'auxiliaryLanguageLabel': { // NEW
+                 'zh-TW': '第二輔助語言 (Auxiliary Language):',
+                 'en-US': 'Second Auxiliary Language:' // Keep for potential future use
+             },
+             'langOptionZh': { // NEW
+                 'zh-TW': '中文 (Chinese)',
+                 'en-US': '中文 (Chinese)'
+             },
+             'langOptionEn': { // NEW
+                 'zh-TW': '英文 (English)',
+                 'en-US': '英文 (English)'
+             },
+              'langOptionJa': { // NEW
+                 'zh-TW': '日文 (Japanese)',
+                 'en-US': '日文 (Japanese)'
+             },
+            // REMOVED link behavior translations
+            // Map Selection
+            'selectMapTitle': {
+                'zh-TW': '選擇要分析的地圖',
+                'en-US': 'Select a Map to Analyze' // Keep for potential future use
+            },
+            'analyzeButton': {
+                'zh-TW': '分析並載入',
+                'en-US': 'Analyze and Load' // Keep for potential future use
+            },
+            'analyzingButton': {
+                'zh-TW': '分析中...',
+                'en-US': 'Analyzing...' // Keep for potential future use
+            },
+            'selectMapPlaceholder': {
+                'zh-TW': '-- 請選擇地圖 --',
+                'en-US': '-- Select a Map --' // Keep for potential future use
+            },
+            'noMapsPlaceholder': {
+                'zh-TW': '-- 請先至「維護地圖選單」新增地圖 --',
+                'en-US': '-- Please add a map in "Map Maintenance" first --' // Keep for potential future use
+            },
+            // Map Analysis Status
+            'selectMapError': {
+                'zh-TW': '❌ 請先選擇一個地圖來源',
+                'en-US': '❌ Please select a map source first' // Keep for potential future use
+            },
+            'loadingStatus': {
+                'zh-TW': '🔄 正在分析並載入地圖資料...',
+                'en-US': '🔄 Analyzing and loading map data...' // Keep for potential future use
+            },
+            'loadSuccess': {
+                'zh-TW': (count) => `✅ 成功載入並儲存 ${count} 個地標！`,
+                'en-US': (count) => `✅ Successfully loaded and saved ${count} placemarks!` // Keep for potential future use
+            },
+            'loadError': {
+                'zh-TW': (msg) => `❌ 載入失敗: ${msg}`,
+                'en-US': (msg) => `❌ Load failed: ${msg}` // Keep for potential future use
+            },
+            'dataLoaded': { // Now correctly uses currentMapLanguage passed as 'lang'
+                'zh-TW': (name, lang) => `地圖資料「${name}」已載入 (語言: ${langCodeToName[lang] || lang})，您可以開始提問了。<br>提示：AI 會先將您的提問翻譯成 '${langCodeToName[lang] || lang}' 再進行分析。`,
+                'en-US': (name, lang) => `Map data "${name}" has been loaded (Language: ${langCodeToName[lang] || lang}). You can start asking questions.<br>Tip: AI will first translate your query to '${langCodeToName[lang] || lang}' for analysis.` // Keep for potential future use
+            },
+            'inputPlaceholder': {
+                'zh-TW': (name) => `針對「${name}」提問...`,
+                'en-US': (name) => `Ask about "${name}"...` // Keep for potential future use
+            },
+            'inputPlaceholderDefault': {
+                'zh-TW': '請先載入地圖資料...',
+                'en-US': 'Please load map data first...' // Keep for potential future use
+            },
+            // AI Interaction
+            'clarifyPrompt': {
+                'zh-TW': '請問您想找什麼類型的地點呢？請提供更具體的關鍵字。',
+                'en-US': 'What type of location are you looking for? Please provide more specific keywords.' // Keep for potential future use
+            },
+            'noDataInDB': {
+                'zh-TW': '抱歉，資料庫中沒有可供查詢的資料。請先分析一個地圖。',
+                'en-US': 'Sorry, there is no data in the database to query. Please analyze a map first.' // Keep for potential future use
+            },
+            'noResultsFound': {
+                 // Always show keywords in the map's base language
+                'zh-TW': (keywords) => `抱歉，根據關鍵字「${keywords}」，在地圖資料中找不到相關資訊。`,
+                'en-US': (keywords) => `Sorry, no information was found in the map data for the keywords: "${keywords}".` // Keep for potential future use
+            },
+            'processingError': {
+                'zh-TW': '抱歉，處理您的請求時發生錯誤。',
+                'en-US': 'Sorry, an error occurred while processing your request.' // Keep for potential future use
+            },
+             'translationError': {
+                'zh-TW': '抱歉，翻譯時發生錯誤。',
+                'en-US': 'Sorry, an error occurred during translation.' // Keep for potential future use
+            },
+            // AI Prompts - Now language specific for internal processing
+             'translateInputPrompt': { // Translate user input TO map language
+                 'zh-TW': (text, targetLang) => `將以下文字翻譯成 ${langCodeToName[targetLang] || targetLang}：\n${text}`,
+                 'en-US': (text, targetLang) => `Translate the following text to ${langCodeToName[targetLang] || targetLang}:\n${text}`,
+                 'ja-JP': (text, targetLang) => `次のテキストを${langCodeToName[targetLang] || targetLang}に翻訳してください：\n${text}` // Example for Japanese structure
+             },
+            'keywordPrompt': { // Asks for keywords IN the target language (map's language)
+                'zh-TW': (query, lang) => `You are a search keyword generator. The user query is provided below (already translated to ${langCodeToName[lang] || lang}). Analyze the query and respond with a single string of space-separated keywords suitable for searching map data IN ${langCodeToName[lang] || lang}.
+If the query is too vague or unclear, respond "CLARIFY".
+Respond *only* with the space-separated keyword string in ${langCodeToName[lang] || lang}.
+Query: "${query}"`,
+                 'en-US': (query, lang) => `You are a search keyword generator. The user query is provided below (already translated to ${langCodeToName[lang] || lang}). Analyze the query and respond with a single string of space-separated keywords suitable for searching map data IN ${langCodeToName[lang] || lang}.
+If the query is too vague or unclear, respond "CLARIFY".
+Respond *only* with the space-separated keyword string in ${langCodeToName[lang] || lang}.
+Query: "${query}"`,
+                'ja-JP': (query, lang) => `あなたは検索キーワード生成器です。ユーザーのクエリ（既に${langCodeToName[lang] || lang}に翻訳済み）を以下に示します。クエリを分析し、${langCodeToName[lang] || lang}の地図データを検索するのに適した、スペースで区切られたキーワードの単一文字列で応答してください。
+クエリが曖昧すぎるか不明確な場合は、「CLARIFY」と応答してください。
+応答は、${langCodeToName[lang] || lang}のスペース区切りのキーワード文字列*のみ*で行ってください。
+クエリ: "${query}"` // Example for Japanese
+            },
+            'fullPrompt': { // Generates summary IN map language
+                'zh-TW': (args) => `你是一個專業的地圖資料分析助理。
+                這裡有一份經過篩選的 JSON 格式地圖資料 (內容為繁體中文):
+                \`\`\`json
+                ${args.data}
+                \`\`\`
+                請根據這份 JSON 資料，用**繁體中文**總結並回答使用者的問題（問題也已翻譯成繁體中文）：「${args.query}」。
+
+                你的回答應該遵循以下格式：
+                1. 第一行是純文字總結，例如："根據您的查詢「炒麵」，我找到以下資訊："
+                2. 從第二行開始，列出所有找到的地點。
+                3. 每個地點佔一行，格式為：地點名稱(coordinates: [實際座標])
+                4. 在地點名稱下方，如果你認為有必要，可以根據'description'欄位補充1-2句相關的重點資訊，例如菜單項目或服務內容。
+                請務必僅使用提供的 JSON 資料回答，且回答語言為**繁體中文**。`,
+                'en-US': (args) => `You are a professional map data analyst.
+                Here is a filtered list of map data in JSON format (content is in English):
+                \`\`\`json
+                ${args.data}
+                \`\`\`
+                Based *only* on this JSON data, summarize and answer the user's query (already translated to English): "${args.query}". Respond **in English**.
+
+                Your response MUST follow this format:
+                1. A one-line summary, e.g., "Based on your query for 'noodles', I found the following locations:"
+                2. List all found locations, starting from the second line.
+                3. Each location must be on its own line in the format: Location Name(coordinates: [actual_coordinates])
+                4. Below the location name, if you deem it necessary, add 1-2 key details from the 'description' field.
+                Answer **only** using the provided JSON data and respond **in English**.`,
+                'ja-JP': (args) => `あなたはプロの地図データアナリストです。
+                以下は、フィルタリングされたJSON形式の地図データです（内容は日本語です）：
+                \`\`\`json
+                ${args.data}
+                \`\`\`
+                このJSONデータのみに基づいて、ユーザーの質問（既に日本語に翻訳済み）：「${args.query}」に**日本語**で要約して回答してください。
+
+                回答は以下の形式に従う必要があります：
+                1. 1行の要約、例：「'ラーメン'のクエリに基づいて、以下の場所が見つかりました：」
+                2. 2行目から、見つかったすべての場所をリストします。
+                3. 各場所は1行に、形式：場所名(coordinates: [実際の座標])で記述します。
+                4. 場所名の下に、必要と判断した場合は、'description'フィールドからメニュー項目やサービス内容など、関連する重要な詳細を1〜2文追加します。
+                提供されたJSONデータのみを使用して回答し、回答言語は**日本語**にしてください。` // Example for Japanese
+            },
+             'translateOutputPrompt': { // NEW: Translate final summary FROM Map Language TO Auxiliary Language
+                 'zh-TW': (text, targetLang) => `將以下繁體中文文字翻譯成自然流暢的 ${langCodeToName[targetLang] || targetLang}：\n${text}`,
+                 'en-US': (text, targetLang) => `Translate the following English text into natural-sounding ${langCodeToName[targetLang] || targetLang}:\n${text}`,
+                 'ja-JP': (text, targetLang) => `次の日本語テキストを自然な${langCodeToName[targetLang] || targetLang}に翻訳してください：\n${text}`
+             },
+             // REMOVED translateOutputToChinesePrompt as it's covered by translateOutputPrompt
+            // Diagnostics
+            'diagTitle': {
+                'zh-TW': '🔍 瀏覽器相容性診斷',
+                'en-US': '🔍 Browser Compatibility Diagnostics' // Keep for potential future use
+            },
+            // Other Alerts
+            // ... (keep existing alerts) ...
+            'dbNotInit': {
+                'zh-TW': '資料庫尚未初始化！',
+                'en-US': 'Database not initialized!'
+            },
+            'noDataToDownload': {
+                'zh-TW': '資料庫中沒有資料可下載。',
+                'en-US': 'No data in the database to download.'
+            },
+            'dbReadError': {
+                'zh-TW': (msg) => `讀取資料庫失敗: ${msg}`,
+                'en-US': (msg) => `Failed to read database: ${msg}`
+            },
+            'confirmClearPlacemarks': {
+                'zh-TW': '確定要清除所有已分析的地標資料嗎？此操作無法復原。',
+                'en-US': 'Are you sure you want to clear all analyzed placemark data? This action cannot be undone.'
+            },
+            'clearPlacemarksSuccess': {
+                'zh-TW': '地標資料庫已清除。',
+                'en-US': 'Placemark database has been cleared.'
+            },
+            'clearPlacemarksError': {
+                'zh-TW': (msg) => `清除資料庫失敗: ${msg}`,
+                'en-US': (msg) => `Failed to clear database: ${msg}`
+            },
+            'invalidMapUrl': {
+                'zh-TW': '請輸入有效的 Google 我的地圖網址 (需包含 mid=...)',
+                'en-US': 'Please enter a valid Google My Maps URL (must include mid=...)'
+            },
+            'confirmDeleteMap': {
+                'zh-TW': '確定要刪除此地圖嗎？',
+                'en-US': 'Are you sure you want to delete this map?'
+            }
+        };
+
+        /**
+         * 獲取翻譯後的字串 (Handles bilingual mode for UI) - Corrected Logic V3
+         * @param {string} key - translations 物件中的 key
+         * @param {any} [args] - 傳遞給函式的值 (例如 count 或 name)
+         */
+         function getBotMessage(key, args = null) {
+            // UI always displays in Chinese (zh-TW) primarily
+            const primaryUiLang = 'zh-TW'; 
+            const primaryMsgData = translations[key]?.[primaryUiLang];
+            // Pass currentMapLanguage context to function if it exists
+            const primaryMsg = typeof primaryMsgData === 'function' ? primaryMsgData(args, currentMapLanguage) : primaryMsgData; 
+
+             // Determine the auxiliary language message if needed (only if different from primary)
+             let auxMsg = null;
+             // Check if auxiliary language is different from the primary UI language (Chinese)
+             const needsAuxiliaryDisplay = auxiliaryLanguage !== primaryUiLang; 
+
+             if (needsAuxiliaryDisplay) {
+                 const auxMsgData = translations[key]?.[auxiliaryLanguage];
+                  // Pass currentMapLanguage context even when getting aux message
+                 auxMsg = typeof auxMsgData === 'function' ? auxMsgData(args, currentMapLanguage) : auxMsgData; 
+             }
+
+            // For UI messages (not internal prompts)
+            if (!key.includes('Prompt')) {
+                 if (needsAuxiliaryDisplay && auxMsg) {
+                     // Show Primary (Chinese) + Auxiliary Language
+                     // Ensure primaryMsg exists, fallback needed? (Assume zh-TW always exists for UI)
+                     return `${primaryMsg || `[Missing ${primaryUiLang} translation: ${key}]`}<br>${auxMsg}`;
+                 } else {
+                     // Otherwise, show only Primary (Chinese)
+                     return primaryMsg || `[Missing ${primaryUiLang} translation: ${key}]`; 
+                 }
+            } else {
+                // For internal prompts - should use getInternalPrompt instead
+                console.warn("getBotMessage called for an internal prompt key:", key);
+                 // Return the Chinese version for safety, as internal prompts rely on getInternalPrompt
+                 return primaryMsg || `[Missing ${primaryUiLang} translation: ${key}]`;
+            }
+        }
+
+
+
+        /**
+         * 獲取用於 AI 處理的內部提示詞 (根據目標語言)
+         * @param {string} key - Prompt key (e.g., 'keywordPrompt', 'fullPrompt', 'translate...')
+         * @param {string} promptLang - The language structure to use for the prompt (e.g., 'zh-TW' for Chinese instructions)
+         * @param {any} [args] - Arguments for the prompt function (e.g., text to translate, query data)
+         * @param {string} [targetLang] - Optional target language for translation prompts or context language for generation prompts
+         */
+         function getInternalPrompt(key, promptLang, args = null, targetLang = null) {
+             // Use promptLang to get the correct prompt structure
+             const structureLang = promptLang || 'zh-TW'; // Default structure to zh-TW
+             const promptData = translations[key]?.[structureLang] || translations[key]?.['zh-TW']; // Fallback structure
+
+             if (typeof promptData === 'function') {
+                 // Pass necessary arguments
+                 return promptData(args, targetLang || promptLang); // Pass targetLang if available for translation, else pass promptLang (map language)
+             }
+             // For non-function prompts
+             if (promptData) return promptData; 
+             
+             console.error(`Missing internal prompt definition for key: ${key}, lang: ${structureLang}`);
+             return `[Error: Missing internal prompt: ${key} for lang ${structureLang}]`; 
+         }
+
+
+        /**
+         * 初始化 IndexedDB
+         */
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('mapDB', 2); // DB 版本更新
+
+                request.onupgradeneeded = (event) => {
+                    const dbInstance = event.target.result;
+                    if (!dbInstance.objectStoreNames.contains('placemarks')) {
+                        dbInstance.createObjectStore('placemarks', { keyPath: 'id', autoIncrement: true });
+                    }
+                    if (!dbInstance.objectStoreNames.contains('maps')) {
+                        dbInstance.createObjectStore('maps', { keyPath: 'id', autoIncrement: true });
+                    }
+                };
+
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    console.log('資料庫連接成功');
+                    resolve(db);
+                };
+
+                request.onerror = (event) => {
+                    console.error('資料庫連接錯誤:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // --- 地圖選單 CRUD ---
+        const getMaps = () => new Promise((resolve, reject) => {
+            if (!db) return reject("DB not initialized");
+            const transaction = db.transaction('maps', 'readonly');
+            const store = transaction.objectStore('maps');
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const addMap = (map) => new Promise((resolve, reject) => {
+            if (!db) return reject("DB not initialized");
+            const transaction = db.transaction('maps', 'readwrite');
+            const store = transaction.objectStore('maps');
+            const request = store.add(map);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const updateMap = (map) => new Promise((resolve, reject) => {
+             if (!db) return reject("DB not initialized");
+            const transaction = db.transaction('maps', 'readwrite');
+            const store = transaction.objectStore('maps');
+            const request = store.put(map);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const deleteMap = (id) => new Promise((resolve, reject) => {
+             if (!db) return reject("DB not initialized");
+            const transaction = db.transaction('maps', 'readwrite');
+            const store = transaction.objectStore('maps');
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+
+
+        /**
+         * 從 IndexedDB 取得所有地標
+         */
+        function getPlacemarksFromDB() {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    return reject("Database not initialized.");
+                }
+                const transaction = db.transaction(['placemarks'], 'readonly');
+                const objectStore = transaction.objectStore('placemarks');
+                const request = objectStore.getAll();
+
+                request.onsuccess = (event) => {
+                    resolve(event.target.result);
+                };
+
+                request.onerror = (event) => {
+                    reject(event.target.error);
+                };
+            });
+        }
+        
+        /**
+         * 清除 IndexedDB 中的地標資料
+         */
+        function clearPlacemarksDB() {
+             return new Promise((resolve, reject) => {
+                if (!db) {
+                    return reject("Database not initialized.");
+                }
+                const transaction = db.transaction(['placemarks'], 'readwrite');
+                const objectStore = transaction.objectStore('placemarks');
+                const request = objectStore.clear();
+
+                request.onsuccess = () => {
+                    console.log("Placemarks cleared from DB.");
+                    resolve();
+                };
+
+                request.onerror = (event) => {
+                    console.error("Error clearing placemarks:", event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        /**
+         * 初始化 AI 模型並設定 UI
+         */
+        async function initializeAI() {
+            try {
+                await initDB(); // 初始化資料庫
+                // await populateMapSelector(); // 延後顯示
+                makeResizable(); // 啟用面板寬度調整功能
+                
+                // 更新輸入框的預設 placeholder
+                messageInput.placeholder = getBotMessage('inputPlaceholderDefault');
+
+                if (!window.LanguageModel) {
+                    throw new Error("瀏覽器不支援 AI API (window.LanguageModel不存在)");
+                }
+
+                const status = await window.LanguageModel.availability();
+                if (status === "available") {
+                    model = await window.LanguageModel.create();
+                    statusIndicator.classList.add('bg-green-200', 'text-green-800');
+                    statusDot.classList.add('bg-green-500');
+                    statusText.textContent = '本地 AI 已啟用';
+                    displayInitialSetup(); // 顯示歡迎和 Dropdown
+                } else if (status === "after-download") {
+                    statusIndicator.classList.add('bg-yellow-200', 'text-yellow-800');
+                    statusDot.classList.add('bg-yellow-500');
+                    statusText.textContent = '模型下載中...';
+                    addMessage("AI 模型正在下載中，請稍候再試。", 'bot');
+                } else {
+                    throw new Error(`AI 不可用，狀態: ${status}`);
+                }
+            } catch (error) {
+                console.error("初始化失敗:", error);
+                statusIndicator.classList.add('bg-red-200', 'text-red-800');
+                statusDot.classList.add('bg-red-500');
+                statusText.textContent = '初始化失敗';
+                const troubleshootingMessage = `
+                    <div class="space-y-3 text-slate-800">
+                        <p><strong>初始化失敗</strong></p>
+                        <p class="text-xs text-gray-500 mt-2">錯誤詳情: ${error.message}</p>
+                    </div>`;
+                addMessage(troubleshootingMessage, 'bot', true);
+            }
+        }
+
+        /**
+         * 顯示初始設定 - 歡迎、輔助語言下拉選單 和地圖選擇
+         */
+        function displayInitialSetup() {
+             // Display welcome message (always Chinese initially)
+            addMessage(translations['welcome']['zh-TW'], 'bot', true); // Show Chinese welcome
+
+            // Display Auxiliary Language Dropdown
+            const optionsContainer = document.createElement('div');
+            optionsContainer.innerHTML = `
+                <div class="bg-white border border-slate-200 rounded-lg p-3 my-2 space-y-2">
+                     <label for="auxiliary-language-select" class="block text-sm font-medium text-slate-700">${translations['auxiliaryLanguageLabel']['zh-TW']}</label> <!-- Always show Chinese label -->
+                     <select id="auxiliary-language-select" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 transition bg-white text-slate-800 text-sm">
+                         <option value="zh-TW" selected>${translations['langOptionZh']['zh-TW']}</option>
+                         <option value="en-US">${translations['langOptionEn']['zh-TW']}</option>
+                         <option value="ja-JP">${translations['langOptionJa']['zh-TW']}</option>
+                     </select>
+                </div>`;
+            addMessage(optionsContainer.innerHTML, 'bot', true);
+
+            // Add event listener for dropdown
+            const auxLangSelect = document.getElementById('auxiliary-language-select');
+            if(auxLangSelect) {
+                auxLangSelect.addEventListener('change', (event) => {
+                    auxiliaryLanguage = event.target.value;
+                     console.log("Auxiliary language set to:", auxiliaryLanguage);
+                     // Placeholder update is less critical now as main UI is always Chinese
+                     // Optional: Could update placeholder if needed, but primary interaction is Chinese
+                });
+            } else {
+                console.error("Auxiliary language select element not found after adding.");
+            }
+
+            // Display Map Selection immediately after
+            displayMapSelection();
+        }
+        
+        
+        /**
+         * 顯示地圖選擇 (現在是獨立函式)
+         */
+        function displayMapSelection() {
+            const mapSelectorContainer = document.createElement('div');
+             // Always use Chinese text for this UI element
+            mapSelectorContainer.innerHTML = `
+                <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
+                    <h2 class="text-base font-semibold text-slate-700">${translations['selectMapTitle']['zh-TW']}</h2>
+                    <select id="map-source-selector" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 transition bg-white text-slate-800">
+                        <!-- Options will be populated by populateMapSelector -->
+                    </select>
+                    <button id="analyze-map-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition flex items-center justify-center">
+                        <svg id="analyze-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M10.4 2.2a2.3 2.3 0 0 1 3.2 0l7.3 8.1c.6.6.9 1.3.9 2.1s-.3 1.5-.9 2.1l-7.3 8.1a2.3 2.3 0 0 1-3.2 0l-7.3-8.1a2.4 2.4 0 0 1 0-4.2l7.3-8.1Z"/><path d="m14 12-4 2v-4l4 2Z"/></svg>
+                        <span>${translations['analyzeButton']['zh-TW']}</span>
+                    </button>
+                    <div id="map-data-status" class="text-sm text-center h-5 mt-1"></div>
+                </div>`;
+             addMessage(mapSelectorContainer.innerHTML, 'bot', true); // Append, don't replace
+             populateMapSelector(); // Populate options
+             attachMapSelectorListeners(); // Attach listeners
+        }
+        
+        /**
+         * 更新 IndexedDB 中的資料
+         */
+        function updateDB(placemarks) {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    reject("資料庫未初始化");
+                    return;
+                }
+                const transaction = db.transaction(['placemarks'], 'readwrite');
+                const objectStore = transaction.objectStore('placemarks');
+                objectStore.clear(); // 清除舊資料
+                placemarks.forEach(placemark => {
+                    objectStore.add(placemark);
+                });
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = (event) => reject(event.target.error);
+            });
+        }
+        
+        /**
+         * 從 IndexedDB 讀取並顯示資料
+         */
+        function displayDBData(filterTerm = '') {
+            if (!db) return;
+            const transaction = db.transaction(['placemarks'], 'readonly');
+            const objectStore = transaction.objectStore('placemarks');
+            const request = objectStore.getAll();
+            const container = document.getElementById('db-data-container');
+            container.innerHTML = '<p class="text-gray-500 p-4">正在讀取資料...</p>';
+
+            request.onsuccess = (event) => {
+                let placemarks = event.target.result;
+                
+                if (filterTerm) {
+                    const lowerCaseFilter = filterTerm.toLowerCase();
+                     // Search based on map language - assume Chinese for now if not specified
+                     // A more robust solution might store map language with placemarks or filter differently based on currentMapLanguage
+                     placemarks = placemarks.filter(p => 
+                         p.name.includes(filterTerm) || // Case-sensitive for Chinese-like data
+                         p.description.includes(filterTerm) ||
+                         p.name.toLowerCase().includes(lowerCaseFilter) || // Also check lowercase for potential English parts
+                         p.description.toLowerCase().includes(lowerCaseFilter)
+                    );
+                }
+
+                if (placemarks.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500 p-4">找不到資料。請嘗試其他關鍵字或點擊「顯示全部」。</p>';
+                    return;
+                }
+                // Modified table header for dual links
+                let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full bg-white border"><thead class="bg-gray-100"><tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal"><th class="py-3 px-6 text-left">名稱</th><th class="py-3 px-6 text-left">在地圖上顯示</th><th class="py-3 px-6 text-center">操作</th></tr></thead><tbody class="text-gray-600 text-sm font-light">`;
+                placemarks.forEach(p => {
+                    const descriptionHtml = p.description.replace(/"/g, '"');
+                    const mapLang = 'zh-TW';
+                    const nameSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name.trim())}&hl=${mapLang}`;
+                    let coordsUrl = '#'; // Default if coords missing
+                     if (p.coordinates) {
+                         const coordsParts = p.coordinates.split(',');
+                          // Google KML often uses lon,lat,alt order
+                         const longitude = parseFloat(coordsParts[0]); 
+                         const latitude = parseFloat(coordsParts[1]); 
+                          if (!isNaN(latitude) && !isNaN(longitude)) {
+                              // Use standard lat,lng order for Google Maps URL
+                            coordsUrl = `https://www.google.com/maps?q=${latitude},${longitude}&hl=${mapLang}&z=15`;
+                          }
+                     }
+
+                    // MODIFIED: Added two links in the second column
+                    tableHTML += `<tr class="border-b border-gray-200 hover:bg-gray-100">
+                        <td class="py-3 px-6 text-left whitespace-nowrap">${p.name}</td>
+                         <td class="py-3 px-6 text-left text-xs space-x-2">
+                             <a href="${nameSearchUrl}" target="_blank" class="text-blue-600 hover:underline">依名稱</a>
+                             ${coordsUrl !== '#' ? `<a href="${coordsUrl}" target="_blank" class="text-blue-600 hover:underline">依座標</a>` : '<span class="text-gray-400">無座標</span>'}
+                         </td>
+                        <td class="py-3 px-6 text-center"><button class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold py-1 px-3 rounded description-btn" data-description="${descriptionHtml}" data-name="${p.name.replace(/"/g, "'")}">說明</button></td>
+                    </tr>`;
+                });
+                tableHTML += '</tbody></table></div>';
+                container.innerHTML = tableHTML;
+                
+                // Keep existing listener for description, remove db-location-link listener
+                container.addEventListener('click', (event) => {
+                    const target = event.target;
+                    if (target.classList.contains('description-btn')) {
+                        const name = target.dataset.name;
+                        const description = target.dataset.description;
+                        showModal(name, description);
+                    } 
+                    // REMOVED db-location-link listener
+                });
+            };
+            request.onerror = (event) => {
+                 container.innerHTML = `<p class="text-red-500 p-4">讀取資料庫失敗: ${event.target.error}</p>`;
+            };
+        }
+        
+        /**
+         * 下載資料庫資料為 CSV 檔案
+         */
+        function downloadDBData() {
+            if (!db) {
+                alert(getBotMessage('dbNotInit'));
+                return;
+            }
+            const transaction = db.transaction(['placemarks'], 'readonly');
+            const objectStore = transaction.objectStore('placemarks');
+            const request = objectStore.getAll();
+
+            request.onsuccess = (event) => {
+                const placemarks = event.target.result;
+                if (placemarks.length === 0) {
+                    alert(getBotMessage('noDataToDownload'));
+                    return;
+                }
+
+                let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+                csvContent += "名稱,描述,座標\n"; 
+
+                placemarks.forEach(p => {
+                    const name = `"${p.name.replace(/"/g, '""')}"`;
+                    const description = `"${p.description.replace(/"/g, '""')}"`;
+                    const coordinates = `"${p.coordinates.replace(/"/g, '""')}"`;
+                    csvContent += [name, description, coordinates].join(',') + "\n";
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "map_data.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            request.onerror = (event) => {
+                alert(getBotMessage('dbReadError', event.target.error));
+            };
+        }
+
+
+        /**
+         * 綁定地圖選擇器事件
+         */
+        function attachMapSelectorListeners() {
+            const overviewMapIframe = document.getElementById('overview-map-iframe');
+            const mapSelector = document.getElementById('map-source-selector'); // Get selector here
+            const analyzeButton = document.getElementById('analyze-map-btn'); // Get button here
+
+            if (mapSelector) { // Check if selector exists
+                mapSelector.addEventListener('change', event => {
+                    const selectedMapId = event.target.value;
+                    const mapLang = 'zh-TW'; // Always use Chinese for map iframe
+                    if (selectedMapId && overviewMapIframe) {
+                        overviewMapIframe.src = `https://www.google.com/maps/d/embed?mid=${selectedMapId}&hl=${mapLang}&ehbc=2E312F`;
+                    } else if (overviewMapIframe) {
+                        overviewMapIframe.src = '';
+                    }
+                });
+            }
+
+            if (analyzeButton) { // Check if button exists
+                analyzeButton.addEventListener('click', handleMapAnalysis);
+            }
+        }
+
+
+        /**
+         * 處理地圖分析與資料載入
+         */
+        async function handleMapAnalysis() {
+            const mapSelector = document.getElementById('map-source-selector');
+            const analyzeMapBtn = document.getElementById('analyze-map-btn');
+            if(!mapSelector || !analyzeMapBtn) return;
+            
+            const selectedMapId = mapSelector.value;
+
+            if (!selectedMapId) {
+                updateMapDataStatus(getBotMessage('selectMapError'), 'error');
+                return;
+            }
+
+            analyzeMapBtn.disabled = true;
+             analyzeMapBtn.querySelector('span').textContent = getBotMessage('analyzingButton'); // Update button text
+             analyzeMapBtn.querySelector('svg').classList.add('hidden'); // Hide icon
+             const spinner = document.createElement('div');
+             spinner.className = 'animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2';
+             analyzeMapBtn.prepend(spinner); // Add spinner
+
+            updateMapDataStatus(getBotMessage('loadingStatus'), 'loading');
+            
+            const kmlUrl = `https://www.google.com/maps/d/kml?mid=${selectedMapId}&forcekml=1`;
+
+            try {
+                const response = await fetch(kmlUrl);
+                if (!response.ok) throw new Error(`伺服器回應錯誤: ${response.status}`);
+                
+                const kmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(kmlText, "application/xml");
+                
+                if (xmlDoc.querySelector("parsererror")) throw new Error("KML 檔案格式有誤");
+
+                const placemarks = xmlDoc.getElementsByTagName('Placemark');
+                const placemarkData = [];
+                for (let i = 0; i < placemarks.length; i++) {
+                    const p = placemarks[i];
+                    placemarkData.push({
+                        name: p.getElementsByTagName('name')[0]?.textContent.trim() || "無名稱",
+                        description: p.getElementsByTagName('description')[0]?.textContent.trim() || "無描述",
+                        coordinates: p.getElementsByTagName('coordinates')[0]?.textContent.trim() || "無座標"
+                    });
+                }
+                
+                await updateDB(placemarkData); // 更新資料庫
+                
+                const maps = await getMaps();
+                const selectedMap = maps.find(m => m.mapId === selectedMapId);
+                
+                // Store the custom AI prompt, or null if not provided
+                currentMapAiPrompt = selectedMap?.aiPrompt || null; 
+                 // NEW: Store map language
+                 currentMapLanguage = selectedMap?.mapLanguage || 'zh-TW'; // Default to zh-TW
+                 
+                 // Update bilingual check based on new map language and aux language
+                 // isBilingualMode = currentMapLanguage !== auxiliaryLanguage; // REMOVED - not needed here
+                 
+                updateMapDataStatus(getBotMessage('loadSuccess', placemarks.length), 'success');
+                onDataLoaded(mapSelector.options[mapSelector.selectedIndex].text);
+            
+            } catch (error) {
+                console.error("分析地圖時發生錯誤:", error);
+                currentMapAiPrompt = null; // Reset prompt on error
+                 currentMapLanguage = 'zh-TW'; // Reset language
+                 // isBilingualMode update removed here
+                updateMapDataStatus(getBotMessage('loadError', error.message), 'error');
+            } finally {
+                analyzeMapBtn.disabled = false;
+                analyzeMapBtn.querySelector('span').textContent = getBotMessage('analyzeButton'); // Restore button text
+                const currentSpinner = analyzeMapBtn.querySelector('.animate-spin');
+                 if (currentSpinner) analyzeMapBtn.removeChild(currentSpinner); // Remove spinner
+                 analyzeMapBtn.querySelector('svg').classList.remove('hidden'); // Show icon
+            }
+        }
+        
+        /**
+         * 資料載入成功後的處理
+         */
+        function onDataLoaded(sourceName) {
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            messageInput.placeholder = getBotMessage('inputPlaceholder', sourceName);
+             // Pass currentMapLanguage to dataLoaded message
+            addMessage(getBotMessage('dataLoaded', sourceName, currentMapLanguage), 'bot', true); 
+            messageInput.focus();
+        }
+
+        /**
+         * 更新地圖資料狀態訊息
+         */
+        function updateMapDataStatus(message, type) {
+            const mapDataStatus = document.getElementById('map-data-status');
+            if (!mapDataStatus) return;
+            mapDataStatus.innerHTML = message; // Use innerHTML for bilingual potential
+            if (type === 'success') {
+                mapDataStatus.className = 'text-sm text-center h-5 text-green-600';
+            } else if (type === 'error') {
+                mapDataStatus.className = 'text-sm text-center h-5 text-red-600';
+            } else {
+                mapDataStatus.className = 'text-sm text-center h-5 text-gray-500';
+            }
+        }
+
+        /**
+         * 將訊息添加到聊天視窗
+         */
+        function addMessage(text, sender, isHTML = false) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'flex items-start gap-3 animate-fade-in';
+            let contentDiv = null; // Div containing the actual message content
+
+            if (sender === 'user') {
+                messageElement.classList.add('justify-end');
+                messageElement.innerHTML = `
+                    <div class="bg-blue-500 text-white p-3 rounded-lg rounded-br-none max-w-md">
+                        <p>${text}</p>
+                    </div>
+                    <div class="bg-blue-500 text-white p-2 rounded-full flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>`;
+                contentDiv = messageElement.querySelector('p'); // Reference user message p tag
+            } else {
+                const botMessageContainer = document.createElement('div');
+                botMessageContainer.className = 'bg-slate-200 text-slate-800 p-3 rounded-lg rounded-tl-none max-w-md';
+                contentDiv = document.createElement('div'); // This is the div we'll return
+                if (isHTML) contentDiv.innerHTML = text;
+                else contentDiv.textContent = text;
+                botMessageContainer.appendChild(contentDiv);
+                messageElement.innerHTML = `
+                    <div class="bg-slate-800 text-white p-2 rounded-full flex-shrink-0">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                    </div>`;
+                messageElement.appendChild(botMessageContainer);
+            }
+
+            chatWindow.appendChild(messageElement);
+            chatWindow.scrollTop = chatWindow.scrollHeight; 
+            return contentDiv; // Return the content div
+        }
+        
+        /**
+         * 在指定地圖容器中顯示地點 (REMOVED - No longer used)
+         */
+         // function displayLocationOnMap(coordinates, name = '') { ... }
+
+
+        /**
+         * Helper to process AI summary text into HTML with dual links
+         * @param {string} responseText - Raw text from AI (expected in Map Language)
+         * @param {Array} filteredPlacemarks - Array of placemark objects used for this summary
+         * @returns {string} - HTML formatted string
+         */
+        function processSummaryResponse(responseText, filteredPlacemarks) {
+             let finalHtml = responseText.replace(/\n/g, '<br>');
+             const regex = /(.+?)\s*\(coordinates:\s*([^)]+)\)/g;
+             const mapLang = 'zh-TW'; // Link language consistency
+
+             finalHtml = finalHtml.replace(regex, (match, name, coords) => {
+                 const placemark = filteredPlacemarks.find(p => p.name.trim() === name.trim());
+                 const descriptionHtml = placemark ? placemark.description.replace(/"/g, '"') : '';
+                 const safeName = name.trim().replace(/"/g, '"'); // Escape name
+
+                 const nameSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name.trim())}&hl=${mapLang}`;
+                 let coordsUrl = '#'; // Default if coords missing
+                  if (coords && coords.includes(',')) {
+                      const coordsParts = coords.split(',');
+                      // Google KML often uses lon,lat,alt order
+                      const longitude = parseFloat(coordsParts[0]); 
+                      const latitude = parseFloat(coordsParts[1]); 
+
+                      // Ensure latitude and longitude are valid numbers before forming URL
+                      if (!isNaN(latitude) && !isNaN(longitude)) {
+                           // Use standard lat,lng order for Google Maps URL
+                          coordsUrl = `https://www.google.com/maps?q=${latitude},${longitude}&hl=${mapLang}&z=15`;
+                      } else {
+                          console.warn(`Invalid coordinates parsed for ${name}: lon=${coordsParts[0]}, lat=${coordsParts[1]}`);
+                          coordsUrl = '#'; // Keep invalid coords link disabled
+                      }
+                  } else {
+                     console.warn(`Coordinates format incorrect or missing for ${name}: ${coords}`);
+                     coordsUrl = '#'; // Keep invalid coords link disabled
+                  }
+
+
+                 // MODIFIED: Added two links (name and coords)
+                 return `<div class="py-1">
+                             <div class="flex items-center justify-between">
+                                 <div> <!-- Wrapper for name and coords links -->
+                                     <a href="${nameSearchUrl}" target="_blank" class="location-link" data-name="${safeName}">${safeName}</a>
+                                     ${coordsUrl !== '#' ? `(<a href="${coordsUrl}" target="_blank" class="coords-link text-xs" data-coordinates="${coords.trim()}">座標</a>)` : '<span class="text-gray-400 text-xs">(無有效座標)</span>'}
+                                 </div>
+                                 <div class="flex items-center space-x-2 ml-2 flex-shrink-0">
+                                     <button class="ai-details-btn text-gray-500 hover:text-gray-800" title="詳細資訊" data-name="${safeName}" data-description="${descriptionHtml}">
+                                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                     </button>
+                                 </div>
+                             </div>
+                         </div>`;
+             });
+             return finalHtml;
+        }
+
+        /**
+         * Opens the map link based on user preference (REMOVED - No longer needed)
+         */
+         // function openMapLink(name, coords) { ... }
+
+
+        /**
+         * 處理使用者輸入並呼叫本地 AI (V7 - Final Output Logic Correction)
+         */
+        async function handleUserInput() {
+            const userInput = messageInput.value.trim();
+            if (!userInput || !model) return;
+
+            addMessage(userInput, 'user');
+            messageInput.value = '';
+            setLoading(true);
+
+            let baseLanguageSummaryResponse = ""; // Stores summary in map's language (e.g., zh-TW)
+            let auxiliaryLanguageSummaryResponse = ""; // Stores summary translated to auxiliary lang (e.g., en-US)
+            let botMessageElement = null;
+            let queryInMapLang = userInput;
+
+            try {
+                // == Step 1: Translate User Input to Map Language (if necessary) ==
+                const userInputLang = /[^\u0000-\u007f]/.test(userInput) ? 'zh-TW' : 'en-US'; // Basic language detection
+
+                if (userInputLang !== currentMapLanguage) {
+                     console.log(`Translating input from ${userInputLang} to ${currentMapLanguage}`);
+                     const translateInputPrompt = getInternalPrompt('translateInputPrompt', userInputLang, userInput, currentMapLanguage); 
+                     queryInMapLang = (await model.prompt(translateInputPrompt)).trim();
+                     console.log("Translated query:", queryInMapLang);
+                } else {
+                     console.log("Input language matches map language.");
+                     queryInMapLang = userInput; // Ensure it's assigned
+                }
+
+                // == Step 2: Intent Analysis (using queryInMapLang in Map Language) ==
+                const keywordPrompt = getInternalPrompt('keywordPrompt', currentMapLanguage, queryInMapLang, currentMapLanguage); 
+                const keywordResponse = await model.prompt(keywordPrompt);
+                const keywords = keywordResponse.trim();
+
+                if (keywords === 'CLARIFY') {
+                    addMessage(getBotMessage('clarifyPrompt'), 'bot', true); // Use getBotMessage for UI text
+                    setLoading(false);
+                    return;
+                }
+                 console.log(`Keywords generated (${currentMapLanguage}):`, keywords);
+
+
+                // == Step 3: Local Search (using keywords in map language) ==
+                const allPlacemarks = await getPlacemarksFromDB();
+                if (allPlacemarks.length === 0) {
+                    addMessage(getBotMessage('noDataInDB'), 'bot', true);
+                    setLoading(false);
+                    return;
+                }
+                
+                // Filter logic
+                 const keywordList = keywords.split(/\s+/).filter(k => k); 
+                 const filteredPlacemarks = allPlacemarks.filter(p => {
+                     const content = `${p.name} ${p.description}`; 
+                     if (currentMapLanguage === 'en-US' || currentMapLanguage === 'ja-JP') { // Assuming English/Japanese might need case-insensitive
+                         const contentLower = content.toLowerCase();
+                          // Match keyword case-insensitively if map lang is EN or JA
+                         return keywordList.some(keyword => contentLower.includes(keyword.toLowerCase())); 
+                     } else { // zh-TW or other potentially case-sensitive languages
+                         return keywordList.some(keyword => content.includes(keyword));
+                     }
+                 });
+
+
+                if (filteredPlacemarks.length === 0) {
+                    addMessage(getBotMessage('noResultsFound', keywords), 'bot', true); // Show keywords in map lang
+                    setLoading(false);
+                    return;
+                }
+
+                // == Step 4: Summarization (in currentMapLanguage) ==
+                const placemarkDataString = JSON.stringify(filteredPlacemarks.map(p => ({
+                    name: p.name,
+                    description: p.description,
+                    coordinates: p.coordinates
+                })), null, 2);
+
+                let fullPrompt = '';
+                 // Use custom prompt if available (assumed to be in currentMapLanguage)
+                if (currentMapAiPrompt) {
+                     fullPrompt = currentMapAiPrompt
+                         .replace('{placemarkDataString}', placemarkDataString)
+                         .replace('{userInput}', queryInMapLang); // Use translated query
+                } else {
+                     // Use default prompt FOR the map's language
+                     fullPrompt = getInternalPrompt('fullPrompt', currentMapLanguage, { data: placemarkDataString, query: queryInMapLang }, currentMapLanguage);
+                }
+
+                botMessageElement = addMessage("...", 'bot'); // Create message element
+
+                // Generate Summary in Map Language (Streaming)
+                const stream = model.promptStreaming(fullPrompt);
+                for await (const chunk of stream) {
+                    baseLanguageSummaryResponse += chunk;
+                    // Update UI progressively with the base language response
+                    botMessageElement.innerHTML = processSummaryResponse(baseLanguageSummaryResponse + ' █', filteredPlacemarks);
+                }
+                 // Final update for base language content
+                 const baseHtml = processSummaryResponse(baseLanguageSummaryResponse, filteredPlacemarks);
+                 // Display base language first
+                 botMessageElement.innerHTML = baseHtml; 
+
+
+                // == Step 5: Translate Output for Auxiliary Display (if needed) ==
+                let finalHtmlToShow = baseHtml; // Default: Show only base language (Map Language)
+                let auxiliaryHtml = '';
+                
+                 // Check if Map Language and Auxiliary Language are different
+                const needsAuxiliaryTranslation = currentMapLanguage !== auxiliaryLanguage;
+
+                if (needsAuxiliaryTranslation) {
+                     try {
+                         // Translate Base (Map Language) to Auxiliary Language
+                         const translateOutputPrompt = getInternalPrompt('translateOutputPrompt', currentMapLanguage, baseLanguageSummaryResponse, auxiliaryLanguage); 
+                         
+                         const translatingMsg = `Translating to ${langCodeToName[auxiliaryLanguage] || auxiliaryLanguage}...`; // Dynamic message
+                         botMessageElement.innerHTML += `<hr class="my-2 border-slate-300"><p class="text-gray-500 animate-pulse">${translatingMsg}</p>`;
+                         chatWindow.scrollTop = chatWindow.scrollHeight;
+
+                         auxiliaryLanguageSummaryResponse = await model.prompt(translateOutputPrompt);
+                         auxiliaryHtml = processSummaryResponse(auxiliaryLanguageSummaryResponse, filteredPlacemarks);
+
+                         // Combine: Show Base Language (Map Lang) + Auxiliary Translation
+                         finalHtmlToShow = `${baseHtml}<hr class="my-2 border-slate-300">${auxiliaryHtml}`;
+
+                     } catch (translateError) {
+                         console.error(`Output translation error (${currentMapLanguage} -> ${auxiliaryLanguage}):`, translateError);
+                          // Show base display + translation error
+                          finalHtmlToShow = baseHtml + `<hr class="my-2 border-slate-300"><p class="text-red-500 text-sm">${getBotMessage('translationError')}</p>`;
+                     }
+                      // Update the bot message with the final combined/error HTML
+                      botMessageElement.innerHTML = finalHtmlToShow;
+                }
+                 // If languages are the same, finalHtmlToShow remains baseHtml (already displayed)
+
+
+            } catch (error) {
+                console.error("Error during handleUserInput:", error);
+                 if (botMessageElement) {
+                     botMessageElement.innerHTML = getBotMessage('processingError');
+                 } else {
+                     addMessage(getBotMessage('processingError'), 'bot', true);
+                 }
+            } finally {
+                setLoading(false);
+            }
+        }
+        
+        function setLoading(isLoading) {
+            sendButton.disabled = isLoading;
+            messageInput.disabled = isLoading;
+            sendIcon.classList.toggle('hidden', isLoading);
+            loadingSpinner.classList.toggle('hidden', !isLoading);
+            if (!isLoading) messageInput.focus();
+        }
+
+        async function runDiagnostics() {
+            let results = [];
+            const addResult = (label, value, isGood) => {
+                const icon = isGood ? '✅' : '❌';
+                results.push(`<div>${icon} ${label}: ${value}</div>`);
+            };
+            const hasAI = !!window.LanguageModel;
+            addResult('AI API', hasAI ? '存在' : '不存在', hasAI);
+            let statusMessage = '';
+            if (hasAI) {
+                const status = await window.LanguageModel.availability();
+                addResult('AI 狀態', `<strong>${status}</strong>`, status === 'available');
+            }
+            const finalMessage = `<div class="space-y-2"><p><strong>${getBotMessage('diagTitle')}</strong></p><div class="text-sm space-y-1 font-mono bg-slate-100 p-3 rounded-md">${results.join('')}</div></div>`;
+            addMessage(finalMessage, 'bot', true);
+        }
+
+        /**
+         * 解析 KML description 欄位的內容
+         */
+        function parseDescription(htmlString) {
+            const data = {};
+            const lines = htmlString.split(/<br\s*\/?>/i);
+            lines.forEach(line => {
+                const strippedLine = line.replace(/<[^>]+>/g, '').trim();
+                if (strippedLine) {
+                    const separatorIndex = strippedLine.indexOf('：');
+                    if (separatorIndex > 0) {
+                        const key = strippedLine.substring(0, separatorIndex).trim();
+                        const value = strippedLine.substring(separatorIndex + 1).trim();
+                        data[key] = value;
+                    } else if (!data['其他資訊']) {
+                        data['其他資訊'] = strippedLine;
+                    } else {
+                        data['其他資訊'] += '\n' + strippedLine;
+                    }
+                }
+            });
+            return data;
+        }
+
+
+        // --- Modal Logic ---
+        const modal = document.getElementById('description-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+
+        function showModal(name, description) {
+            const parsedData = parseDescription(description);
+            modalTitle.textContent = name;
+            
+            let contentHTML = '';
+            for (const key in parsedData) {
+                if (Object.hasOwnProperty.call(parsedData, key)) {
+                    const value = parsedData[key];
+                    contentHTML += `
+                        <div class="grid grid-cols-3 gap-2 py-1">
+                            <strong class="col-span-1 font-semibold text-gray-600 text-right pr-2">${key}</strong>
+                            <span class="col-span-2 text-gray-800">${value.replace(/\n/g, '<br>')}</span>
+                        </div>`;
+                }
+            }
+
+            modalContent.innerHTML = contentHTML || '<p class="text-gray-500">無詳細資訊</p>';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function hideModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        modalCloseBtn.addEventListener('click', hideModal);
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                hideModal();
+            }
+        });
+
+
+        // --- Tabs 切換邏輯 ---
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            // 修正: 確保 map-maintenance 的 panel ID 正確
+            document.getElementById(`${tabName}-map-panel`).classList.add('active'); 
+            
+            if (tabName === 'indexeddb') {
+                displayDBData();
+            } else if (tabName === 'map-maintenance') {
+                renderMapList();
+            }
+        }
+        
+        function handleDBSearch() {
+            const searchTerm = document.getElementById('db-search-input').value;
+            displayDBData(searchTerm);
+        }
+
+        document.getElementById('overview-tab').addEventListener('click', () => switchTab('overview'));
+        document.getElementById('filtered-tab').addEventListener('click', () => switchTab('filtered'));
+        document.getElementById('indexeddb-tab').addEventListener('click', () => switchTab('indexeddb'));
+        document.getElementById('map-maintenance-tab').addEventListener('click', () => switchTab('map-maintenance'));
+        document.getElementById('refresh-db-btn').addEventListener('click', () => displayDBData());
+        document.getElementById('download-db-btn').addEventListener('click', downloadDBData);
+        document.getElementById('db-search-btn').addEventListener('click', handleDBSearch);
+        document.getElementById('db-search-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                handleDBSearch();
+            }
+        });
+        document.getElementById('clear-db-btn').addEventListener('click', async () => {
+            if (confirm(getBotMessage('confirmClearPlacemarks'))) {
+                try {
+                    await clearPlacemarksDB();
+                    currentMapAiPrompt = null; // Reset prompt
+                     currentMapLanguage = 'zh-TW'; // Reset language
+                    displayDBData(); // Refresh the list
+                    alert(getBotMessage('clearPlacemarksSuccess'));
+                } catch (error) {
+                    alert(getBotMessage('clearPlacemarksError', error));
+                }
+            }
+        });
+        
+        // 事件監聽器 (修改 chatWindow 監聽器)
+        sendButton.addEventListener('click', handleUserInput);
+        messageInput.addEventListener('keydown', (e) => (e.key === 'Enter' && !e.shiftKey) && (e.preventDefault(), handleUserInput()));
+        diagnosticButton.addEventListener('click', runDiagnostics);
+        
+        // Modified event listener to handle details button (links are handled by browser now)
+        chatWindow.addEventListener('click', (event) => {
+            // REMOVED location-link listener
+            const button = event.target.closest('.ai-details-btn');
+            // Note: Checkbox listener is added directly in displayInitialSetup
+
+             if (button) {
+                event.preventDefault();
+                const name = button.dataset.name;
+                const description = button.dataset.description;
+                showModal(name, description);
+            }
+        });
+
+
+        // --- Map Maintenance Logic ---
+        const mapFormModal = document.getElementById('map-form-modal');
+        const mapModalTitle = document.getElementById('map-modal-title');
+        const mapModalCloseBtn = document.getElementById('map-modal-close-btn');
+        const mapForm = document.getElementById('map-form');
+        const mapIdInput = document.getElementById('map-id-input');
+        const mapNameChInput = document.getElementById('map-name-ch');
+        const mapNameEnInput = document.getElementById('map-name-en');
+        const mapUrlInput = document.getElementById('map-url');
+        const mapLanguageSelect = document.getElementById('map-language'); // NEW
+        const clearMapFormBtn = document.getElementById('clear-map-form-btn');
+
+        const extractMapId = (url) => {
+            const match = url.match(/mid=([a-zA-Z0-9_-]+)/);
+            return match ? match[1] : null;
+        };
+        
+        const clearMapForm = () => {
+            mapForm.reset();
+            mapIdInput.value = '';
+             mapLanguageSelect.value = 'zh-TW'; // Reset language dropdown
+        };
+
+        const showMapFormModal = (mapToEdit = null) => {
+            clearMapForm();
+            if (mapToEdit) {
+                mapModalTitle.textContent = '修改地圖 (Edit Map)';
+                mapIdInput.value = mapToEdit.id;
+                mapNameChInput.value = mapToEdit.chineseName;
+                mapNameEnInput.value = mapToEdit.englishName;
+                mapUrlInput.value = mapToEdit.url;
+                document.getElementById('map-description').value = mapToEdit.description || '';
+                document.getElementById('map-ai-prompt').value = mapToEdit.aiPrompt || '';
+                 mapLanguageSelect.value = mapToEdit.mapLanguage || 'zh-TW'; // Set language dropdown
+            } else {
+                mapModalTitle.textContent = '新增地圖 (Add Map)';
+            }
+            mapFormModal.classList.remove('hidden');
+            mapFormModal.classList.add('flex');
+        };
+
+        const hideMapFormModal = () => {
+            mapFormModal.classList.add('hidden');
+            mapFormModal.classList.remove('flex');
+        };
+
+        async function renderMapList(filterTerm = '') {
+            let maps = await getMaps();
+            const container = document.getElementById('map-list-container');
+            
+            if (filterTerm) {
+                const lowerCaseFilter = filterTerm.toLowerCase();
+                maps = maps.filter(map => 
+                    map.chineseName.toLowerCase().includes(lowerCaseFilter) ||
+                    (map.englishName && map.englishName.toLowerCase().includes(lowerCaseFilter))
+                );
+            }
+
+            if (maps.length === 0) {
+                container.innerHTML = '<p class="p-4 text-gray-500">找不到地圖資料。</p>';
+                return;
+            }
+            let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full bg-white border"><thead class="bg-gray-100"><tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal"><th class="py-3 px-6 text-left">中文名稱</th><th class="py-3 px-6 text-left">語言</th><th class="py-3 px-6 text-left">說明</th><th class="py-3 px-6 text-left">Map ID</th><th class="py-3 px-6 text-center">操作</th></tr></thead><tbody class="text-gray-600 text-sm font-light">`; // Added Language column
+            maps.forEach(map => {
+                 const shortDesc = (map.description || '').substring(0, 30) + (map.description && map.description.length > 30 ? '...' : '');
+                 const langDisplay = langCodeToName[map.mapLanguage] || map.mapLanguage; // Show language name/code
+                 const langColor = map.mapLanguage === 'en-US' ? 'text-blue-600' : (map.mapLanguage === 'ja-JP' ? 'text-red-600' : 'text-green-600');
+                 tableHTML += `<tr class="border-b border-gray-200 hover:bg-gray-100">
+                    <td class="py-3 px-6 text-left whitespace-nowrap">${map.chineseName}</td>
+                    <td class="py-3 px-2 text-center text-xs font-semibold ${langColor}">${langDisplay}</td> <!-- Language Column -->
+                    <td class="py-3 px-6 text-left text-xs text-gray-500">${shortDesc || 'N/A'}</td>
+                    <td class="py-3 px-6 text-left font-mono text-xs">${map.mapId}</td>
+                    <td class="py-3 px-6 text-center">
+                        <button class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold py-1 px-2 rounded mr-2 edit-map-btn" data-id="${map.id}">編輯</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1 px-2 rounded delete-map-btn" data-id="${map.id}">刪除</button>
+                    </td>
+                </tr>`;
+            });
+            tableHTML += `</tbody></table></div>`;
+            container.innerHTML = tableHTML;
+        }
+
+        mapForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const mapId = extractMapId(mapUrlInput.value);
+            if (!mapId) {
+                alert(getBotMessage('invalidMapUrl'));
+                return;
+            }
+            const mapData = {
+                chineseName: mapNameChInput.value,
+                englishName: mapNameEnInput.value,
+                url: mapUrlInput.value,
+                mapId: mapId,
+                description: document.getElementById('map-description').value,
+                aiPrompt: document.getElementById('map-ai-prompt').value,
+                 mapLanguage: mapLanguageSelect.value // Save selected language
+            };
+            const existingId = parseInt(mapIdInput.value);
+            if (existingId) {
+                mapData.id = existingId;
+                await updateMap(mapData);
+            } else {
+                await addMap(mapData);
+            }
+            hideMapFormModal();
+            await renderMapList();
+            
+            // 如果地圖選擇器存在，就更新它
+            if(document.getElementById('map-source-selector')) {
+                await populateMapSelector();
+            }
+        });
+
+        clearMapFormBtn.addEventListener('click', clearMapForm);
+        mapModalCloseBtn.addEventListener('click', hideMapFormModal);
+        
+        document.getElementById('map-list-container').addEventListener('click', async (e) => {
+            const target = e.target;
+            const id = parseInt(target.dataset.id);
+            if (target.classList.contains('edit-map-btn')) {
+                const maps = await getMaps();
+                const mapToEdit = maps.find(m => m.id === id);
+                if (mapToEdit) {
+                    showMapFormModal(mapToEdit);
+                }
+            } else if (target.classList.contains('delete-map-btn')) {
+                if (confirm(getBotMessage('confirmDeleteMap'))) {
+                    await deleteMap(id);
+                    await renderMapList();
+                    // 如果地圖選擇器存在，就更新它
+                    if(document.getElementById('map-source-selector')) {
+                        await populateMapSelector();
+                    }
+                }
+            }
+        });
+        
+        document.getElementById('map-show-add-btn').addEventListener('click', () => showMapFormModal());
+
+        function handleMapSearch() {
+            const searchTerm = document.getElementById('map-search-input').value;
+            renderMapList(searchTerm);
+        }
+        document.getElementById('map-search-btn').addEventListener('click', handleMapSearch);
+        document.getElementById('map-search-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleMapSearch();
+        });
+        document.getElementById('map-show-all-btn').addEventListener('click', () => {
+            document.getElementById('map-search-input').value = '';
+            renderMapList();
+        });
+        
+        async function populateMapSelector() {
+            const maps = await getMaps();
+            const selector = document.getElementById('map-source-selector');
+            const overviewMapIframe = document.getElementById('overview-map-iframe');
+            
+            // 清除 iframe 來源
+            if(overviewMapIframe) {
+               overviewMapIframe.src = '';
+            }
+            
+            if(!selector) {
+                console.warn("Map selector not found during populate.");
+                 return; // Exit if selector doesn't exist yet
+            }
+
+            selector.innerHTML = ''; // 清除現有選項
+            
+            // 新增預設的 placeholder 選項
+            const placeholderOption = document.createElement('option');
+            placeholderOption.value = "";
+            placeholderOption.textContent = getBotMessage('selectMapPlaceholder');
+            placeholderOption.selected = true;
+            selector.appendChild(placeholderOption);
+
+            if (maps.length > 0) {
+                 maps.forEach((map) => { // 移除 index
+                    const option = document.createElement('option');
+                    option.value = map.mapId;
+                    // Show language in dropdown for clarity
+                     const langDisplay = langCodeToName[map.mapLanguage] || map.mapLanguage;
+                     option.textContent = `${map.chineseName} (${langDisplay})`; 
+                    // 移除自動選取第一個的邏級
+                    selector.appendChild(option);
+                });
+            } else {
+                 // 如果沒有地圖，更新 placeholder 文字
+                 placeholderOption.textContent = getBotMessage('noMapsPlaceholder');
+                 placeholderOption.disabled = true;
+            }
+        }
+
+        // --- Resizable Panels Logic ---
+        function makeResizable() {
+            const leftPanel = document.getElementById('left-panel');
+            const rightPanel = document.getElementById('right-panel');
+            const resizer = document.getElementById('resizer');
+            
+            if (!leftPanel || !rightPanel || !resizer) return;
+
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'col-resize';
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+            });
+
+            function handleMouseMove(e) {
+                if (!isResizing) return;
+
+                const mainContainer = leftPanel.parentElement;
+                const containerRect = mainContainer.getBoundingClientRect();
+                const resizerPosition = e.clientX - containerRect.left;
+
+                // 設定最小寬度避免面板被縮太小
+                const minWidth = 200; 
+                const newLeftWidth = Math.max(minWidth, Math.min(resizerPosition, containerRect.width - minWidth - resizer.offsetWidth));
+
+                leftPanel.style.width = `${newLeftWidth}px`;
+                // 右側面板會因 flex-grow 自動填滿剩餘空間
+                rightPanel.style.flex = '1'; 
+            }
+
+            function handleMouseUp() {
+                isResizing = false;
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            }
+        }
+
+
+        window.onload = initializeAI;
+    </script>
+</body>
+</html>
+
